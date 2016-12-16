@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"io"
@@ -12,6 +13,8 @@ import (
 
 	"golang.org/x/tools/cover"
 )
+
+var fileList = flag.String("list", "", "Path to a file that will be used as a list of files for merge. Can be '-' to use STDIN")
 
 func mergeProfiles(p *cover.Profile, merge *cover.Profile) {
 	if p.Mode != merge.Mode {
@@ -97,15 +100,38 @@ func main() {
 
 	var merged []*cover.Profile
 
-	for _, file := range flag.Args() {
-		profiles, err := cover.ParseProfiles(file)
-		if err != nil {
-			log.Fatalf("failed to parse profiles: %v", err)
+	if len(*fileList) != 0 {
+		var f *os.File
+		if *fileList == "-" {
+			f = os.Stdin
+		} else {
+			var err error
+			f, err = os.Open(*fileList)
+			if err != nil {
+				log.Fatalf("failed to open file listing coverprofiles: %v", err)
+			}
 		}
-		for _, p := range profiles {
-			merged = addProfile(merged, p)
+		s := bufio.NewScanner(f)
+		for s.Scan() {
+			file := string(s.Bytes())
+			merged = processFile(file, merged)
 		}
 	}
 
+	for _, file := range flag.Args() {
+		merged = processFile(file, merged)
+	}
+
 	dumpProfiles(merged, os.Stdout)
+}
+
+func processFile(file string, merged []*cover.Profile) []*cover.Profile {
+	profiles, err := cover.ParseProfiles(file)
+	if err != nil {
+		log.Fatalf("failed to parse profiles: %v", err)
+	}
+	for _, p := range profiles {
+		merged = addProfile(merged, p)
+	}
+	return merged
 }
